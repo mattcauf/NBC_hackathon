@@ -3,7 +3,12 @@
 A Python template for building trading algorithms that connect to the exchange simulator.
 
 ## Quick Start
-
+Available scenarios
+- normal_market
+- stressed_market
+- flash_crash
+- hft_dominated
+- mini_flash_crash
 ### 1. Install Dependencies
 
 ```bash
