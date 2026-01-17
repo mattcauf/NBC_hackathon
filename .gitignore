@@ -2,9 +2,7 @@
 venv/
 
 # Data files (collected experiments)
-data/
-*.jsonl
-*.csv
+
 
 # Python cache
 __pycache__/
