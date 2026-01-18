@@ -16,7 +16,7 @@ class AggressiveMarketMaker(BaseStrategy):
     Crosses the spread to guarantee fills, trades frequently for high notional.
     """
     
-    def __init__(self, max_inventory: int = 3500, qty: int = 250, trade_freq: int = 10):
+    def __init__(self, max_inventory: int = 3500, qty: int = 200, trade_freq: int = 10):
         """
         Initialize aggressive market maker.
         

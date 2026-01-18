@@ -200,6 +200,7 @@ class TradingBot:
             
             # Log progress every 500 steps with latency stats
             if self.current_step % 500 == 0 and self.step_latencies:
+                print(f"[{self.student_id}] Step {self.current_step} | bid: {self.last_bid} | ask: {self.last_ask} | mid: {self.last_mid}")
                 avg_lat = sum(self.step_latencies[-100:]) / min(len(self.step_latencies), 100)
                 print(f"[{self.student_id}] Step {self.current_step} | Orders: {self.orders_sent} | Inv: {self.inventory} | Avg Latency: {avg_lat:.1f}ms")
             

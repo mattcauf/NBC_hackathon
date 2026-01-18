@@ -9,6 +9,20 @@ from typing import Dict, Optional
 from strategies.metrics import IncrementalMetrics
 
 
+def round_qty_to_100(qty: int) -> int:
+    """
+    Round quantity down to nearest multiple of 100, clamped to [100, 500].
+    
+    Args:
+        qty: Raw quantity value
+        
+    Returns:
+        Quantity as a multiple of 100, between 100 and 500
+    """
+    rounded = (qty // 100) * 100
+    return max(100, min(500, rounded))
+
+
 class BaseStrategy(ABC):
     """
     Abstract base class for all trading strategies.

@@ -5,7 +5,7 @@ Emergency strategy that only flattens positions during crashes.
 """
 
 from typing import Dict, Optional
-from strategies.base import BaseStrategy
+from strategies.base import BaseStrategy, round_qty_to_100
 from strategies.metrics import IncrementalMetrics
 
 
@@ -35,7 +35,7 @@ class CrashSurvivalStrategy(BaseStrategy):
         """
         # Only action: flatten position aggressively
         if abs(inventory) > self.flatten_threshold:
-            qty = min(self.qty, abs(inventory))
+            qty = round_qty_to_100(min(self.qty, abs(inventory)))
             if inventory > 0:
                 # Sell below bid to guarantee fill
                 return {"side": "SELL", "price": round(bid - 0.10, 2), "qty": qty}

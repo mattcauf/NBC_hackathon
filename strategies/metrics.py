@@ -14,7 +14,7 @@ class IncrementalMetrics:
     All operations are O(1) after initialization.
     """
     
-    def __init__(self, window_size: int = 100, calibration_steps: int = 200):
+    def __init__(self, window_size: int = 100, calibration_steps: int = 100):
         self.window_size = window_size
         self.calibration_steps = calibration_steps
         

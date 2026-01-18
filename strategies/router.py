@@ -7,6 +7,7 @@ Routes to appropriate strategy based on market regime.
 from typing import Dict, Optional
 from strategies.metrics import IncrementalMetrics
 from strategies.classifier import RegimeClassifier
+from strategies.base import round_qty_to_100
 from strategies.mean_reversion import MeanReversionStrategy
 from strategies.momentum import MomentumStrategy
 from strategies.passive_mm import PassiveMarketMaker
@@ -150,12 +151,12 @@ class StrategyRouter:
             # Block order that would breach limit
             # Instead, try to unwind if we're close to limit
             if inventory > 3500:
-                return {"side": "SELL", "price": round(bid, 2), "qty": min(300, inventory - 3000)}
+                return {"side": "SELL", "price": round(bid, 2), "qty": round_qty_to_100(inventory - 3000)}
             if inventory < -3500:
-                return {"side": "BUY", "price": round(ask, 2), "qty": min(300, abs(inventory) - 3000)}
+                return {"side": "BUY", "price": round(ask, 2), "qty": round_qty_to_100(abs(inventory) - 3000)}
             return None
         
-        # Validate qty bounds (100-500)
-        order["qty"] = max(100, min(500, order["qty"]))
+        # Validate qty bounds (100-500) and ensure multiple of 100
+        order["qty"] = round_qty_to_100(order["qty"])
         
         return order

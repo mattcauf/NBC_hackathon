@@ -5,7 +5,7 @@ Trades on the assumption that prices revert to their mean.
 """
 
 from typing import Dict, Optional
-from strategies.base import BaseStrategy
+from strategies.base import BaseStrategy, round_qty_to_100
 from strategies.metrics import IncrementalMetrics
 
 
@@ -55,8 +55,8 @@ class MeanReversionStrategy(BaseStrategy):
         # Exit: price returned to mean
         if abs(z_score) < self.exit_z:
             if inventory > 300:
-                return {"side": "SELL", "price": round(bid, 2), "qty": min(self.qty, inventory)}
+                return {"side": "SELL", "price": round(bid, 2), "qty": round_qty_to_100(min(self.qty, inventory))}
             if inventory < -300:
-                return {"side": "BUY", "price": round(ask, 2), "qty": min(self.qty, abs(inventory))}
+                return {"side": "BUY", "price": round(ask, 2), "qty": round_qty_to_100(min(self.qty, abs(inventory)))}
         
         return None
