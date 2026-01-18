@@ -45,6 +45,12 @@ class IncrementalMetrics:
         self.volatility = 0.0
         self.imbalance = 0.0
         self.z_score = 0.0
+        self.churn_rate = 0.0  # Fraction of recent steps where mid changed
+        
+        # For churn tracking
+        self._last_mid = None
+        self._mid_changes = 0
+        self._churn_window = 20  # Look at last 20 steps
         
     def update(self, mid: float, spread: float, bid_depth: int, ask_depth: int):
         """
@@ -118,6 +124,19 @@ class IncrementalMetrics:
             self.imbalance = (bid_depth - ask_depth) / total_depth
         else:
             self.imbalance = 0.0
+        
+        # Churn rate: how often mid price changes (proxy for quote activity)
+        if self._last_mid is not None and abs(mid - self._last_mid) > 0.001:
+            self._mid_changes += 1
+        self._last_mid = mid
+        
+        # Compute churn as fraction of steps with mid changes over window
+        if n >= self._churn_window:
+            self.churn_rate = min(1.0, self._mid_changes / self._churn_window)
+            if n % self._churn_window == 0:
+                self._mid_changes = 0
+        else:
+            self.churn_rate = 0.0
         
         # --- Set baseline after calibration period ---
         if not self.calibrated and n >= self.calibration_steps:

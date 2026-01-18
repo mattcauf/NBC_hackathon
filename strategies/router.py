@@ -27,8 +27,14 @@ class StrategyRouter:
         self.strategies = {
             "mean_reversion": MeanReversionStrategy(),
             "momentum": MomentumStrategy(),
-            "passive_mm": PassiveMarketMaker(),
-            "aggressive_mm": AggressiveMarketMaker(),
+            
+            # NORMAL tuned: lower churn → slower refresh, slightly larger size
+            "passive_mm_normal": PassiveMarketMaker(skew_factor=0.0002, qty=200, trade_freq=5),
+            
+            # HFT tuned: high churn (deltaMM/cancelRate high) → refresh faster, smaller size
+            "passive_mm_hft": PassiveMarketMaker(skew_factor=0.0001, qty=100, trade_freq=1),
+            
+            "aggressive_mm": AggressiveMarketMaker(qty=200, trade_freq=2),
             "crash_survival": CrashSurvivalStrategy(),
         }
     
@@ -80,19 +86,19 @@ class StrategyRouter:
         
         elif regime == RegimeClassifier.RECOVERY:
             # RECOVERY: Conservative approach
-            order = self.strategies["passive_mm"].get_order(
+            order = self.strategies["passive_mm_normal"].get_order(
                 bid, ask, mid, inventory, step, self.metrics
             )
         
         elif regime == RegimeClassifier.STRESSED:
             # STRESSED: Conservative with wider spreads
-            order = self.strategies["passive_mm"].get_order(
+            order = self.strategies["passive_mm_normal"].get_order(
                 bid, ask, mid, inventory, step, self.metrics
             )
         
         elif regime == RegimeClassifier.HFT:
             # HFT: Careful, small sizes
-            order = self.strategies["passive_mm"].get_order(
+            order = self.strategies["passive_mm_hft"].get_order(
                 bid, ask, mid, inventory, step, self.metrics
             )
         

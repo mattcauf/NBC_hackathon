@@ -48,6 +48,7 @@ class RegimeClassifier:
         depth_ratio = metrics.depth_ratio
         abs_velocity = abs(metrics.price_velocity)
         abs_imbalance = abs(metrics.imbalance)
+        churn = metrics.churn_rate
         
         # --- CRASH detection (highest priority) ---
         if spread_ratio > 2.5 or abs_velocity > 0.15 or abs_imbalance > 0.6:
@@ -69,13 +70,22 @@ class RegimeClassifier:
         elif spread_ratio > 1.5 or abs_imbalance > 0.4 or depth_ratio < 0.5:
             self.current_regime = self.STRESSED
         
-        # --- HFT detection (thin but stable) ---
-        elif depth_ratio < 0.6 and spread_ratio < 1.3:
-            self.current_regime = self.HFT
-        
-        # --- Default: NORMAL ---
+        # --- HFT detection (high churn but not crashing) ---
         else:
-            self.current_regime = self.NORMAL
+            HFT_ENTER = 0.35
+            HFT_EXIT = 0.25
+            stable_enough = spread_ratio < 1.6 and depth_ratio > 0.4 and abs_velocity < 0.08
+            
+            if self.previous_regime == self.HFT:
+                if stable_enough and churn >= HFT_EXIT:
+                    self.current_regime = self.HFT
+                else:
+                    self.current_regime = self.NORMAL
+            else:
+                if stable_enough and churn >= HFT_ENTER:
+                    self.current_regime = self.HFT
+                else:
+                    self.current_regime = self.NORMAL
         
         # Track duration
         if self.current_regime == self.previous_regime:

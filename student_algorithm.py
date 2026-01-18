@@ -77,6 +77,13 @@ class TradingBot:
         self.step_latencies = []            # Time between DONE and next market data
         self.order_send_times = {}          # order_id -> time sent
         self.fill_latencies = []            # Time between order and fill
+        
+        # Open order tracking (for cancel-opposite-side logic)
+        self.open_buy_orders = {}           # order_id -> {"price": X, "qty": N, "step": S}
+        self.open_sell_orders = {}          # order_id -> {"price": X, "qty": N, "step": S}
+        
+        # Order limits
+        self.MAX_OPEN_ORDERS = 40           # Stay well under the 50 limit
     
     # =========================================================================
     # REGISTRATION - Get a token to start trading
@@ -215,11 +222,29 @@ class TradingBot:
                 self.last_mid = 0
             
             # =============================================
+            # ORDER MANAGEMENT: Prevent hitting 50 order limit
+            # =============================================
+            open_count = self._get_open_order_count()
+            
+            # Safety check: If at max open orders, cancel oldest to make room
+            if open_count >= self.MAX_OPEN_ORDERS:
+                self._cancel_old_orders(min(5, open_count))
+                # Signal DONE and skip this step (don't send new order)
+                self._send_done()
+                return
+            
+            # Periodic cleanup: Cancel stale orders (older than 200 steps) every 50 steps
+            if self.current_step % 50 == 0 and open_count > 0:
+                self._cancel_stale_orders(max_age=200)
+            
+            # =============================================
             # YOUR STRATEGY LOGIC GOES HERE
             # =============================================
             order = self.decide_order(self.last_bid, self.last_ask, self.last_mid)
             
             if order and self.order_ws and self.order_ws.sock:
+                # Cancel opposite orders that would cause self-match
+                self._cancel_conflicting_orders(order["side"], order["price"])
                 self._send_order(order)
             
             # Signal DONE to advance to next step
@@ -276,6 +301,88 @@ class TradingBot:
     # ORDER HANDLING
     # =========================================================================
     
+    def _cancel_order(self, order_id: str):
+        """Cancel an order by ID."""
+        msg = {
+            "action": "CANCEL",
+            "order_id": order_id
+        }
+        try:
+            self.order_ws.send(json.dumps(msg))
+        except Exception as e:
+            print(f"[{self.student_id}] Cancel order error: {e}")
+
+    def _cancel_order_ids(self, order_ids):
+        """Cancel a list of order IDs and remove them from local tracking."""
+        for order_id in order_ids:
+            self._cancel_order(order_id)
+            self.open_buy_orders.pop(order_id, None)
+            self.open_sell_orders.pop(order_id, None)
+
+    def _cancel_same_side_orders(self, side: str):
+        """Cancel any existing open orders on the same side (replace semantics)."""
+        if side == "BUY":
+            self._cancel_order_ids(list(self.open_buy_orders.keys()))
+        else:
+            self._cancel_order_ids(list(self.open_sell_orders.keys()))
+
+    def _cancel_conflicting_orders(self, new_side: str, new_price: float):
+        """
+        Cancel opposite-side orders ONLY if the new order would cross them.
+        This prevents self-match without destroying two-sided quoting.
+        """
+        if new_side == "BUY":
+            # Buying at/above an existing sell would cross our own sell
+            to_cancel = [
+                oid for oid, meta in self.open_sell_orders.items()
+                if meta.get("price", float("inf")) <= new_price
+            ]
+            self._cancel_order_ids(to_cancel)
+        else:
+            # Selling at/below an existing buy would cross our own buy
+            to_cancel = [
+                oid for oid, meta in self.open_buy_orders.items()
+                if meta.get("price", float("-inf")) >= new_price
+            ]
+            self._cancel_order_ids(to_cancel)
+
+    def _get_open_order_count(self) -> int:
+        """Return total number of open orders."""
+        return len(self.open_buy_orders) + len(self.open_sell_orders)
+
+    def _cancel_old_orders(self, count: int):
+        """Cancel the oldest N orders (by step they were submitted)."""
+        # Gather all orders with their step
+        all_orders = []
+        for oid, meta in self.open_buy_orders.items():
+            all_orders.append((oid, meta.get("step", 0), "BUY"))
+        for oid, meta in self.open_sell_orders.items():
+            all_orders.append((oid, meta.get("step", 0), "SELL"))
+        
+        # Sort by step (oldest first)
+        all_orders.sort(key=lambda x: x[1])
+        
+        # Cancel the oldest N
+        for i in range(min(count, len(all_orders))):
+            oid, _, side = all_orders[i]
+            self._cancel_order(oid)
+            if side == "BUY":
+                self.open_buy_orders.pop(oid, None)
+            else:
+                self.open_sell_orders.pop(oid, None)
+
+    def _cancel_stale_orders(self, max_age: int = 200):
+        """Cancel orders older than max_age steps."""
+        stale_buy = [
+            oid for oid, meta in self.open_buy_orders.items()
+            if self.current_step - meta.get("step", 0) > max_age
+        ]
+        stale_sell = [
+            oid for oid, meta in self.open_sell_orders.items()
+            if self.current_step - meta.get("step", 0) > max_age
+        ]
+        self._cancel_order_ids(stale_buy + stale_sell)
+    
     def _send_order(self, order: Dict):
         """Send an order to the exchange."""
         order_id = f"ORD_{self.student_id}_{self.current_step}_{self.orders_sent}"
@@ -291,6 +398,13 @@ class TradingBot:
             self.order_send_times[order_id] = time.time()  # Track send time
             self.order_ws.send(json.dumps(msg))
             self.orders_sent += 1
+            
+            # Track the open order with step for age tracking
+            if order["side"] == "BUY":
+                self.open_buy_orders[order_id] = {"price": order["price"], "qty": order["qty"], "step": self.current_step}
+            else:
+                self.open_sell_orders[order_id] = {"price": order["price"], "qty": order["qty"], "step": self.current_step}
+                
         except Exception as e:
             print(f"[{self.student_id}] Send order error: {e}")
     
@@ -323,6 +437,10 @@ class TradingBot:
                     fill_latency = (recv_time - self.order_send_times[order_id]) * 1000  # ms
                     self.fill_latencies.append(fill_latency)
                     del self.order_send_times[order_id]
+                
+                # Remove from open order tracking
+                self.open_buy_orders.pop(order_id, None)
+                self.open_sell_orders.pop(order_id, None)
                 
                 # Update inventory and cash flow
                 if side == "BUY":

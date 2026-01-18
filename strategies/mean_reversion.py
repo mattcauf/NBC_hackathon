@@ -46,11 +46,17 @@ class MeanReversionStrategy(BaseStrategy):
         z_score = metrics.z_score
         
         # Entry: price far from mean
+        tick = 0.1
+        
         if z_score < -self.entry_z and inventory < self.max_inventory:
-            return {"side": "BUY", "price": round(ask, 2), "qty": self.qty}
+            # Passive BUY near bid
+            price = min(bid, ask - tick)
+            return {"side": "BUY", "price": round(price, 1), "qty": self.qty}
         
         if z_score > self.entry_z and inventory > -self.max_inventory:
-            return {"side": "SELL", "price": round(bid, 2), "qty": self.qty}
+            # Passive SELL near ask
+            price = max(ask, bid + tick)
+            return {"side": "SELL", "price": round(price, 1), "qty": self.qty}
         
         # Exit: price returned to mean
         if abs(z_score) < self.exit_z:

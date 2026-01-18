@@ -45,19 +45,37 @@ class AggressiveMarketMaker(BaseStrategy):
         if step % self.trade_freq != 0:
             return None
         
-        # Inventory skew
-        skew = -0.008 * inventory
+        tick = 0.1
+
+        spread = ask - bid
+
+        # Tight quoting: try to be at the inside (or 1 tick inside if spread allows).
+        improve = tick if spread >= 2 * tick else 0.0
+        buy_base = bid + improve
+        sell_base = ask - improve
+
+        # Much smaller skew; cannot push quotes through the spread
+        skew = -0.0002 * inventory
+        skew = max(-0.2, min(0.2, skew))
         
         # Bias toward reducing position
         if inventory > 1000:
-            return {"side": "SELL", "price": round(bid + 0.01, 2), "qty": self.qty}
+            raw = sell_base + skew
+            price = min(ask, max(bid + tick, raw))
+            return {"side": "SELL", "price": round(price, 1), "qty": self.qty}
         elif inventory < -1000:
-            return {"side": "BUY", "price": round(ask - 0.01, 2), "qty": self.qty}
+            raw = buy_base + skew
+            price = max(bid, min(ask - tick, raw))
+            price = max(tick, price)
+            return {"side": "BUY", "price": round(price, 1), "qty": self.qty}
         else:
             # Alternate sides
             if (step // self.trade_freq) % 2 == 0:
-                spread = ask - bid
-                return {"side": "BUY", "price": round(mid - spread/4 + skew, 2), "qty": self.qty}
+                raw = buy_base + skew
+                price = max(bid, min(ask - tick, raw))
+                price = max(tick, price)
+                return {"side": "BUY", "price": round(price, 1), "qty": self.qty}
             else:
-                spread = ask - bid
-                return {"side": "SELL", "price": round(mid + spread/4 + skew, 2), "qty": self.qty}
+                raw = sell_base + skew
+                price = min(ask, max(bid + tick, raw))
+                return {"side": "SELL", "price": round(price, 1), "qty": self.qty}
