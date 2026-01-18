@@ -7,3 +7,24 @@ python -m collectors.runner --scenario normal_market --experiment qty_100 --name
 
 # Generate summary after all runs:
 python -m analysis.summary --summary
+
+# ============================================================================
+# PRIORITIZED CROSS-SCENARIO EXPERIMENTS (Run this next!)
+# ============================================================================
+# PowerShell (Windows):
+.\run_prioritized_experiments.ps1 -Name "Three-Bayesians" -Password "Limit_Up_Limit_D0wn!" -ServerHost "3.98.52.120:8433" -Secure
+
+# Bash (Linux/WSL/Git Bash):
+# bash run_prioritized_experiments.sh "Three-Bayesians" "Limit_Up_Limit_D0wn!" "3.98.52.120:8433" "secure"
+
+# This runs 8 critical experiments:
+# Phase 1 (Crash Understanding):
+#   - flash_crash:passive
+#   - mini_flash_crash:passive
+#   - flash_crash:qty_300
+#   - mini_flash_crash:qty_300
+# Phase 2 (Market Regime Understanding):
+#   - stressed_market:passive
+#   - hft_dominated:passive
+#   - stressed_market:qty_300
+#   - hft_dominated:qty_300

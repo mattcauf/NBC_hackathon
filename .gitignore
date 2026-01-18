@@ -2,7 +2,7 @@
 venv/
 
 # Data files (collected experiments)
-
+data/raw/
 
 # Python cache
 __pycache__/
