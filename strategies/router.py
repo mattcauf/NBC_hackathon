@@ -39,7 +39,7 @@ class StrategyRouter:
         }
     
     def decide_order(self, bid: float, ask: float, mid: float, inventory: int,
-                     step: int, bid_depth: int, ask_depth: int) -> Optional[Dict]:
+                     step: int, bid_depth: int, ask_depth: int) -> Dict:
         """
         Main decision method: update metrics, classify regime, route to strategy.
         
@@ -53,7 +53,7 @@ class StrategyRouter:
             ask_depth: Total ask depth
             
         Returns:
-            Order dict or None
+            Dict with "order" (order dict or None) and "regime" (str)
         """
         # Skip if no valid prices
         if mid <= 0 or bid <= 0 or ask <= 0:
@@ -120,7 +120,7 @@ class StrategyRouter:
         # 4. Apply risk management overlay
         order = self._apply_risk_management(order, bid, ask, inventory)
         
-        return order
+        return {"order": order, "regime": regime}
     
     def _apply_risk_management(self, order: Optional[Dict], bid: float, ask: float,
                               inventory: int) -> Optional[Dict]:

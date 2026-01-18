@@ -51,12 +51,24 @@ class RegimeClassifier:
         churn = metrics.churn_rate
         
         # --- CRASH detection (highest priority) ---
-        if spread_ratio > 2.5 or abs_velocity > 0.15 or abs_imbalance > 0.6:
+        # Lowered thresholds to catch mini flash crashes
+        # Also added compound condition: multiple elevated signals = crash
+        is_crash = (
+            spread_ratio > 2.0 or           # Lowered from 2.5
+            abs_velocity > 0.10 or          # Lowered from 0.15
+            abs_imbalance > 0.5 or          # Lowered from 0.6
+            # Compound: multiple stressed signals together indicate crash
+            (spread_ratio > 1.8 and abs_velocity > 0.06) or
+            (spread_ratio > 1.8 and abs_imbalance > 0.4) or
+            (abs_velocity > 0.08 and abs_imbalance > 0.45)
+        )
+        
+        if is_crash:
             self.current_regime = self.CRASH
             self.crash_cooldown = 0
         
         # --- RECOVERY detection (recently exited crash) ---
-        elif self.previous_regime == self.CRASH and spread_ratio < 2.0:
+        elif self.previous_regime == self.CRASH and spread_ratio < 1.8:
             self.current_regime = self.RECOVERY
             self.crash_cooldown = 100  # Stay cautious for 100 steps
         
@@ -66,14 +78,24 @@ class RegimeClassifier:
                 # Transition out of recovery
                 self.current_regime = self.NORMAL
         
-        # --- STRESSED detection ---
+        # --- STRESSED detection (with hysteresis) ---
+        # BUG FIX: Changed from 'if' to 'elif' to properly chain with CRASH detection
+        elif self.previous_regime == self.STRESSED:
+            STRESSED_EXIT = 1.2
+            # Already in STRESSED: exit only if conditions improve significantly
+            if spread_ratio > STRESSED_EXIT or abs_imbalance > 0.3 or depth_ratio < 0.6:
+                self.current_regime = self.STRESSED
+            else:
+                self.current_regime = self.NORMAL
+        
         elif spread_ratio > 1.5 or abs_imbalance > 0.4 or depth_ratio < 0.5:
+            # Enter STRESSED from NORMAL
             self.current_regime = self.STRESSED
         
         # --- HFT detection (high churn but not crashing) ---
         else:
-            HFT_ENTER = 0.35
-            HFT_EXIT = 0.25
+            HFT_ENTER = 0.20
+            HFT_EXIT = 0.12
             stable_enough = spread_ratio < 1.6 and depth_ratio > 0.4 and abs_velocity < 0.08
             
             if self.previous_regime == self.HFT:

@@ -25,6 +25,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Import strategy router
 from strategies.router import StrategyRouter
 
+# Import data logger
+from collectors.logger import DataLogger
+
 
 class TradingBot:
     """
@@ -84,6 +87,13 @@ class TradingBot:
         
         # Order limits
         self.MAX_OPEN_ORDERS = 40           # Stay well under the 50 limit
+        
+        # Current regime (for regime-aware order management)
+        self.current_regime = "CALIBRATING"
+        
+        # Data logger (initialized after registration)
+        self.logger = None
+        self.pending_fill = None            # Track fill for next log entry
     
     # =========================================================================
     # REGISTRATION - Get a token to start trading
@@ -117,6 +127,15 @@ class TradingBot:
                 return False
             
             print(f"[{self.student_id}] Registered! Run ID: {self.run_id}")
+            
+            # Initialize data logger
+            self.logger = DataLogger(
+                scenario=self.scenario,
+                run_id=self.run_id,
+                experiment_name="strategy_router",
+                mode="active"
+            )
+            
             return True
             
         except Exception as e:
@@ -233,14 +252,37 @@ class TradingBot:
                 self._send_done()
                 return
             
-            # Periodic cleanup: Cancel stale orders (older than 200 steps) every 50 steps
-            if self.current_step % 50 == 0 and open_count > 0:
-                self._cancel_stale_orders(max_age=200)
-            
             # =============================================
             # YOUR STRATEGY LOGIC GOES HERE
             # =============================================
-            order = self.decide_order(self.last_bid, self.last_ask, self.last_mid)
+            result = self.decide_order(self.last_bid, self.last_ask, self.last_mid)
+            order = result["order"]
+            self.current_regime = result["regime"]
+            
+            # Periodic cleanup: Cancel stale orders with regime-aware timeout
+            # HFT markets move fast - cancel stale orders more aggressively
+            stale_timeout = 30 if self.current_regime == "HFT" else 200
+            if self.current_step % 50 == 0 and open_count > 0:
+                self._cancel_stale_orders(max_age=stale_timeout)
+            
+            # Log this step
+            if self.logger:
+                self.logger.log_step(
+                    step=self.current_step,
+                    bid=self.last_bid,
+                    ask=self.last_ask,
+                    mid=self.last_mid,
+                    bids=self.last_bids,
+                    asks=self.last_asks,
+                    last_trade=0.0,  # Not tracked in base TradingBot
+                    inventory=self.inventory,
+                    cash_flow=self.cash_flow,
+                    pnl=self.pnl,
+                    orders_sent=self.orders_sent,
+                    action=order,
+                    fill=self.pending_fill
+                )
+                self.pending_fill = None
             
             if order and self.order_ws and self.order_ws.sock:
                 # Cancel opposite orders that would cause self-match
@@ -257,7 +299,7 @@ class TradingBot:
     # YOUR STRATEGY - MODIFY THIS METHOD!
     # =========================================================================
     
-    def decide_order(self, bid: float, ask: float, mid: float) -> Optional[Dict]:
+    def decide_order(self, bid: float, ask: float, mid: float) -> Dict:
         """
         ╔══════════════════════════════════════════════════════════════════╗
         ║                    YOUR STRATEGY GOES HERE!                       ║
@@ -280,7 +322,7 @@ class TradingBot:
         
         # Skip if no valid prices
         if mid <= 0 or bid <= 0 or ask <= 0:
-            return None
+            return {"order": None, "regime": self.current_regime}
         
         # Calculate book depth
         bid_depth = sum(b.get("qty", 0) for b in self.last_bids) if self.last_bids else 1000
@@ -453,6 +495,14 @@ class TradingBot:
                 # Calculate mark-to-market PnL using mid price
                 self.pnl = self.cash_flow + self.inventory * self.last_mid
                 
+                # Store fill for next log entry
+                self.pending_fill = {
+                    "side": side,
+                    "price": price,
+                    "qty": qty,
+                    "order_id": order_id
+                }
+                
                 print(f"[{self.student_id}] FILL: {side} {qty} @ {price:.2f} | Inventory: {self.inventory} | PnL: {self.pnl:.2f}")
             
             elif msg_type == "ERROR":
@@ -501,10 +551,19 @@ class TradingBot:
             if self.order_ws:
                 self.order_ws.close()
             
+            # Close logger
+            if self.logger:
+                self.logger.close()
+                log_path = self.logger.get_filepath()
+            else:
+                log_path = None
+            
             print(f"\n[{self.student_id}] Final Results:")
             print(f"  Orders Sent: {self.orders_sent}")
             print(f"  Inventory: {self.inventory}")
             print(f"  PnL: {self.pnl:.2f}")
+            if log_path:
+                print(f"  Data logged to: {log_path}")
             
             # Print latency statistics
             if self.step_latencies:
